@@ -63,12 +63,18 @@ def pi_receiver_list():
 
 
 def pi_mailer_main():
+# Message header creation.
+	timegmt = time.gmtime(time.time( ))
+	fmt = '%a, %d %b %Y %H:%M:%S GMT'
+	datestr = time.strftime(fmt, timegmt)
+	msg = 'From: %s\nTo: %s\nDate: %s\nSubject: %s\n%s' \
+       % (sender, receiver, datestr, subj, bodyText)
 # Actual mail to be sent
 	server = smtplib.SMTP(smtpHost, port, smtp_timeout)
 	server.starttls()
 	server.ehlo()
 	server.login(username, passwd)
-	server.sendmail(sender, receiver, subj)
+	server.sendmail(sender, receiver, msg)
 	server.quit()
 
 pi_print_debug()
