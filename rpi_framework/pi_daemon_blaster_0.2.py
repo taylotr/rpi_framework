@@ -43,21 +43,20 @@ def pimotion():
 	GPIO.setmode(GPIO.BCM)
 
 #	Define GPIO to use on Pi
-	GPIO_PIR = 17
+	GPIO_PIR = 7
 
 #	Path to LED script.
 	ledOnpath = "/home/pi/rpi_framework/pi_led_state_change_on.py"
 	ledOffpath = "/home/pi/rpi_framework/pi_led_state_change_off.py"
-
-
 
 	print "PIR Module Test (CTRL-C to exit)"
 
 #	Set pin as input
 	GPIO.setup(GPIO_PIR,GPIO.IN)
 
-	Current_State  = 0
-#	Previous_State = 0
+	Motion_State = 0
+	Previous_State = 0
+	led_state_on = 0
 
 	try:
 
@@ -65,56 +64,35 @@ def pimotion():
 
 #	Loop until PIR output is 0
 		while GPIO.input(GPIO_PIR)==1:
-			Motion_State = 0
+			Motion_State = 1
 
-			print "  Ready."
+		print "  Ready."
 
 #	Loop until user quits with CTRL-C
   		while True :
 
 #	Read PIR state
 			Motion_State = GPIO.input(GPIO_PIR)
-#			read_ledstatusfile = open(ledstatusInPath, 'r')
-#			Current_State_Regex = read_ledstatusfile.read()
-#			Current_State = re.sub(r'2=', "", Current_State_Regex)
-#			read_ledstatusfile.close()
 
-	        	dbconn = sqlite3.connect(ledstatusPath)
-        		dbcursor = dbconn.cursor()
+			if Motion_State==1 and Previous_State==0:
+      			# PIR is triggered
+				print "  Motion detected!"
+				if led_state_on == 0:
+					os.system(ledOnpath)
+					led_state_on = 1
+				elif led_state_on == 1:
+					os.system(ledOffpath)
+					led_state_on = 0
+      			# Record previous state
+        			Previous_State=1
+			elif Motion_State==0 and Previous_State==1:
+			# PIR has returned to ready state
+				print "  Ready"
+				Previous_State=0
 
-        		led_status = True
-
-                	dbconn.text_factory = str
-                	dbcursor.execute('SELECT * FROM led_status')
-               		Current_State = dbcursor.fetchall()
-			response_compiled_regex = re.compile(regex_pattern)
+    			# Wait for 10 milliseconds
+			time.sleep(0.1)
 	
-			if Current_State=='0\n' and Motion_State==1:
-				print(Current_State)
-#	PIR is triggered
-				print "  Motion detected, turning lights on!"
-	
-				os.system(ledOnpath)
-				print "  Ready."
-
-			elif Current_State=='0.6\n' and Motion_State==1:
-#	PIR has returned to ready state
-				print(Current_State)
-				print "  Motion detected, turning lights off!"
-
-      				os.system(ledOffpath)
-				print "  Ready."
-	
-			elif Current_State<>'0.6\n' and Current_State<>'0\n':
-#	PIR has returned to ready state
-				print(Current_State)
-				print "  Motion detected, turning lights off!"
-
-				os.system(ledOffpath)
-				print "  Ready."
-
-#	Wait for 10 milliseconds
-			time.sleep(.01)
 
 	except KeyboardInterrupt:
        		signal_handler(signal.SIGINT, signal_handler)
@@ -300,8 +278,10 @@ def picleanup():
 if __name__ == '__main__':
 	pimkfifo()
 	pidbcheck()
+	piread.daemon = True
 	Thread(target = piread).start()
 	time.sleep(5)
+	pimotion.daemon = True
 	Thread(target = pimotion).start()
 #        daemon = MyDaemon('/tmp/daemon-stepper.pid')
 #        if len(sys.argv) == 2:

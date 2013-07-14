@@ -21,6 +21,8 @@
 #
 #
 #
+
+
 # Import necessary modules
 #	time - Used in the piwait() module for the sleep statement.
 #	os - Used for the opening of the named pipe: /dev/pi-blaster.
@@ -28,97 +30,13 @@
 #	sqlite3 - The internal database used for data persistence across restarts and SIG continuity.
 #	re - Regular expressions to match/subsitute for the actual insertion of the data to /dev/pi-blaster.
 
-import sys, time, os, sqlite3, re, signal, threading
-import RPi.GPIO as GPIO
+import sys, time, os, sqlite3, re, signal
 from pi_daemon_external import daemon
-from threading import Thread
 
 
-ledstatusOutPath = '/tmp/monitoring_daemon.db'
-ledstatusPath = '/tmp/monitoring_daemon.db'
+ledstatusOutPath = '/tmp/led_stepper_status.db'
 regex_pattern = r'[0-9.]+'
 
-def pimotion():
-#	Use BCM GPIO references instead of physical pin numbers
-	GPIO.setmode(GPIO.BCM)
-
-#	Define GPIO to use on Pi
-	GPIO_PIR = 17
-
-#	Path to LED script.
-	ledOnpath = "/home/pi/rpi_framework/pi_led_state_change_on.py"
-	ledOffpath = "/home/pi/rpi_framework/pi_led_state_change_off.py"
-
-
-
-	print "PIR Module Test (CTRL-C to exit)"
-
-#	Set pin as input
-	GPIO.setup(GPIO_PIR,GPIO.IN)
-
-	Current_State  = 0
-#	Previous_State = 0
-
-	try:
-
-		print "Waiting for PIR to settle ..."
-
-#	Loop until PIR output is 0
-		while GPIO.input(GPIO_PIR)==1:
-			Motion_State = 0
-
-			print "  Ready."
-
-#	Loop until user quits with CTRL-C
-  		while True :
-
-#	Read PIR state
-			Motion_State = GPIO.input(GPIO_PIR)
-#			read_ledstatusfile = open(ledstatusInPath, 'r')
-#			Current_State_Regex = read_ledstatusfile.read()
-#			Current_State = re.sub(r'2=', "", Current_State_Regex)
-#			read_ledstatusfile.close()
-
-	        	dbconn = sqlite3.connect(ledstatusPath)
-        		dbcursor = dbconn.cursor()
-
-        		led_status = True
-
-                	dbconn.text_factory = str
-                	dbcursor.execute('SELECT * FROM led_status')
-               		Current_State = dbcursor.fetchall()
-			response_compiled_regex = re.compile(regex_pattern)
-	
-			if Current_State=='0\n' and Motion_State==1:
-				print(Current_State)
-#	PIR is triggered
-				print "  Motion detected, turning lights on!"
-	
-				os.system(ledOnpath)
-				print "  Ready."
-
-			elif Current_State=='0.6\n' and Motion_State==1:
-#	PIR has returned to ready state
-				print(Current_State)
-				print "  Motion detected, turning lights off!"
-
-      				os.system(ledOffpath)
-				print "  Ready."
-	
-			elif Current_State<>'0.6\n' and Current_State<>'0\n':
-#	PIR has returned to ready state
-				print(Current_State)
-				print "  Motion detected, turning lights off!"
-
-				os.system(ledOffpath)
-				print "  Ready."
-
-#	Wait for 10 milliseconds
-			time.sleep(.01)
-
-	except KeyboardInterrupt:
-       		signal_handler(signal.SIGINT, signal_handler)
-#os.close(ledstatusInPath)
 
 def piread():
 #	 Communicate with another process through named pipe
@@ -143,7 +61,6 @@ def piread():
 
 #	Setup the file descriptors for the status monitoring pipe.
 		read_piblasterPath = os.open(piblasterPath, os.O_RDONLY)
-#		read_piblasterPath = os.open(piblasterPath, os.O_RDONLY | os.O_CREAT)
 
 
 		dbconn.text_factory = str # Use the text factory to remove the pesky sqlite brackets on read.
@@ -216,7 +133,7 @@ def pimkfifo():
 	tmpfilename = os.path.join(tmpdir, 'led_status_monitor') # Tmp file name.
 #	print filename
 	try:
-		os.mkfifo(tmpfilename, 0664) # Create the pipe for monitoring and set permissions.
+		os.mkfifo(tmpfilename, 0644) # Create the pipe for monitoring and set permissions.
 	except OSError, e:
 		print "Failed to create FIFO: %s" % e # Print out any errors and exit.
 #	else:
@@ -282,45 +199,34 @@ def picleanup():
 	
 #	tmpfilename.close()	# Close the file path if an error occurs.
 	os.remove(tmpfilename) # File path to remove.
-	os.system('echo "2=0.0" > /dev/pi-blaster')
-
-#	Reset GPIO settings
-	GPIO.cleanup()
 
 
-#class MyDaemon(daemon):
-#	def run(self):
-#		while True:
-#			pimkfifo()
-#			pidbcheck()
-#			piread()
-#			picleanup()
-#		time.sleep(1)
-
-if __name__ == '__main__':
-	pimkfifo()
-	pidbcheck()
-	Thread(target = piread).start()
-	time.sleep(5)
-	Thread(target = pimotion).start()
-#        daemon = MyDaemon('/tmp/daemon-stepper.pid')
-#        if len(sys.argv) == 2:
-#                if 'start' == sys.argv[1]:
-#                        daemon.start()
-#                elif 'stop' == sys.argv[1]:
-#                        daemon.stop()
-#                elif 'restart' == sys.argv[1]:
-#                        daemon.restart()
-#                else:
-#                        print "Unknown command"
-#                        sys.exit(2)
-#                sys.exit(0)
-#        else:
-#                print "usage: %s start|stop|restart" % sys.argv[0]
-#                sys.exit(2)
-#pimkfifo()
-#pidbcheck()
-#piread()
-#picleanup()
+pimkfifo()
+pidbcheck()
+piread()
+picleanup()
 #########piwrite()
+
+class MyDaemon(daemon):
+	def run(self):
+		while True:
+			picode()
+			time.sleep(1)
+
+if __name__ == "__main__":
+        daemon = MyDaemon('/tmp/daemon-stepper.pid')
+        if len(sys.argv) == 2:
+                if 'start' == sys.argv[1]:
+                        daemon.start()
+                elif 'stop' == sys.argv[1]:
+                        daemon.stop()
+                elif 'restart' == sys.argv[1]:
+                        daemon.restart()
+                else:
+                        print "Unknown command"
+                        sys.exit(2)
+                sys.exit(0)
+        else:
+                print "usage: %s start|stop|restart" % sys.argv[0]
+                sys.exit(2)
 
